@@ -1,4 +1,5 @@
 import { Plugin, PluginSettingTab, App, Setting, Notice } from "obsidian";
+import { Extension } from "@codemirror/state";
 import { inlineSuggestionExtension } from "./ghost-text";
 import { fetchGroqCompletion } from "./groq-api";
 
@@ -18,7 +19,7 @@ const DEFAULT_SETTINGS: AIAutocompleteSettings = {
 
 export default class AIAutocompletePlugin extends Plugin {
   settings: AIAutocompleteSettings = DEFAULT_SETTINGS;
-  private editorExtensions: any[] = [];
+  private editorExtensions: Extension[] = [];
 
   async onload() {
     await this.loadSettings();
@@ -39,11 +40,11 @@ export default class AIAutocompletePlugin extends Plugin {
     this.registerEditorExtension(this.editorExtensions);
 
     this.addCommand({
-      id: "toggle-ai-autocomplete",
+      id: "toggle",
       name: "Toggle auto-completion",
       callback: () => {
         this.settings.enabled = !this.settings.enabled;
-        this.saveSettings();
+        void this.saveSettings();
         new Notice(
           `AI Autocomplete: ${this.settings.enabled ? "ON" : "OFF"}`
         );
@@ -79,11 +80,11 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("Groq API Key")
+      .setName("Groq API key")
       .setDesc("Get your key from console.groq.com")
       .addText((text) =>
         text
-          .setPlaceholder("gsk_...")
+          .setPlaceholder("Enter your API key")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value;
@@ -96,10 +97,10 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
       .setDesc("Groq model to use for completions")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("llama-3.3-70b-versatile", "Llama 3.3 70B (recommended)")
-          .addOption("llama-3.1-8b-instant", "Llama 3.1 8B (faster)")
-          .addOption("gemma2-9b-it", "Gemma 2 9B")
-          .addOption("mixtral-8x7b-32768", "Mixtral 8x7B")
+          .addOption("llama-3.3-70b-versatile", "Llama 3.3 70b (recommended)")
+          .addOption("llama-3.1-8b-instant", "Llama 3.1 8b (faster)")
+          .addOption("gemma2-9b-it", "Gemma 2 9b")
+          .addOption("mixtral-8x7b-32768", "Mixtral 8x7b")
           .setValue(this.plugin.settings.model)
           .onChange(async (value) => {
             this.plugin.settings.model = value;

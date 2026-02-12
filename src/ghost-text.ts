@@ -181,35 +181,37 @@ export function createFetchPlugin(fetchFn: FetchFn, delay: number) {
         if (this.timer) clearTimeout(this.timer);
         if (this.abortController) this.abortController.abort();
 
-        this.timer = setTimeout(async () => {
-          const doc = update.state.doc;
-          const cursor = update.state.selection.main.head;
-          const fullText = doc.toString();
+        this.timer = setTimeout(() => {
+          void (async () => {
+            const doc = update.state.doc;
+            const cursor = update.state.selection.main.head;
+            const fullText = doc.toString();
 
-          const prefix = fullText.slice(Math.max(0, cursor - 2000), cursor);
-          const suffix = fullText.slice(cursor, cursor + 500);
+            const prefix = fullText.slice(Math.max(0, cursor - 2000), cursor);
+            const suffix = fullText.slice(cursor, cursor + 500);
 
-          // Don't trigger on empty or very short prefix
-          if (prefix.trim().length < 3) return;
+            // Don't trigger on empty or very short prefix
+            if (prefix.trim().length < 3) return;
 
-          this.abortController = new AbortController();
+            this.abortController = new AbortController();
 
-          try {
-            const result = await fetchFn(prefix, suffix, update.state);
-            if (result && result.trim()) {
-              update.view.dispatch({
-                effects: InlineSuggestionEffect.of({
-                  text: result,
-                  doc,
-                }),
-              });
+            try {
+              const result = await fetchFn(prefix, suffix, update.state);
+              if (result && result.trim()) {
+                update.view.dispatch({
+                  effects: InlineSuggestionEffect.of({
+                    text: result,
+                    doc,
+                  }),
+                });
+              }
+            } catch (e) {
+              // Silently ignore aborted requests
+              if (e instanceof Error && e.name !== "AbortError") {
+                console.error("Groq Copilot: fetch error", e);
+              }
             }
-          } catch (e) {
-            // Silently ignore aborted requests
-            if (e instanceof Error && e.name !== "AbortError") {
-              console.error("Groq Copilot: fetch error", e);
-            }
-          }
+          })();
         }, delay);
       }
 
