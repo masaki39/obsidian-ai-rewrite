@@ -12,6 +12,8 @@ interface AIAutocompleteSettings {
   apiKey: string;
   model: string;
   baseUrl: string;
+  reasoningEffort: string;
+  excludeReasoning: boolean;
   providerOnly: string;
   providerSort: string;
   allowFallbacks: boolean;
@@ -23,8 +25,10 @@ interface AIAutocompleteSettings {
 
 const DEFAULT_SETTINGS: AIAutocompleteSettings = {
   apiKey: "",
-  model: "meta-llama/llama-3.3-70b-instruct:nitro",
+  model: "openai/gpt-oss-120b:nitro",
   baseUrl: OPENROUTER_API_URL,
+  reasoningEffort: "minimal",
+  excludeReasoning: true,
   providerOnly: "groq",
   providerSort: "throughput",
   allowFallbacks: false,
@@ -101,6 +105,8 @@ export default class AIAutocompletePlugin extends Plugin {
       apiKey: this.settings.apiKey,
       model: this.settings.model,
       baseUrl: this.settings.baseUrl,
+      reasoningEffort: this.settings.reasoningEffort,
+      excludeReasoning: this.settings.excludeReasoning,
       providerOnly: this.settings.providerOnly,
       providerSort: this.settings.providerSort,
       allowFallbacks: this.settings.allowFallbacks,
@@ -181,12 +187,16 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
       );
 
     const modelOptions: Record<string, string> = {
+      "openai/gpt-oss-120b:nitro":
+        "OpenAI GPT OSS 120B via Groq (smartest)",
       "meta-llama/llama-3.3-70b-instruct:nitro":
-        "Llama 3.3 70B via Groq (recommended)",
+        "Llama 3.3 70B via Groq (stable)",
+      "moonshotai/kimi-k2-0905:nitro":
+        "Kimi K2 0905 via Groq (code/long context)",
+      "qwen/qwen3-32b:nitro": "Qwen3 32B via Groq (Chinese/reasoning)",
       "meta-llama/llama-3.1-8b-instruct:nitro":
         "Llama 3.1 8B via Groq (lowest latency)",
       "openai/gpt-oss-20b:nitro": "OpenAI GPT OSS 20B via Groq (reasoning)",
-      "openai/gpt-oss-120b:nitro": "OpenAI GPT OSS 120B via Groq (stronger)",
       "llama-3.3-70b-versatile": "Groq direct: Llama 3.3 70B",
       "openai/gpt-oss-120b": "Groq direct: GPT OSS 120B",
     };
@@ -211,10 +221,40 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
       })
       .addText((text) =>
         text
-          .setPlaceholder("meta-llama/llama-3.3-70b-instruct:nitro")
+          .setPlaceholder("openai/gpt-oss-120b:nitro")
           .setValue(this.plugin.settings.model)
           .onChange(async (value) => {
             this.plugin.settings.model = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Reasoning effort")
+      .setDesc("Use minimal/low for inline autocomplete to keep responses fast")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("minimal", "Minimal")
+          .addOption("low", "Low")
+          .addOption("medium", "Medium")
+          .addOption("high", "High")
+          .addOption("none", "None")
+          .addOption("", "API default")
+          .setValue(this.plugin.settings.reasoningEffort)
+          .onChange(async (value) => {
+            this.plugin.settings.reasoningEffort = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Hide reasoning")
+      .setDesc("Keep reasoning tokens out of the returned suggestion text")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.excludeReasoning)
+          .onChange(async (value) => {
+            this.plugin.settings.excludeReasoning = value;
             await this.plugin.saveSettings();
           })
       );

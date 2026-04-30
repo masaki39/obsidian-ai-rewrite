@@ -22,6 +22,8 @@ export interface CompletionRequestOptions {
   apiKey: string;
   model: string;
   baseUrl: string;
+  reasoningEffort?: string;
+  excludeReasoning?: boolean;
   providerOnly?: string;
   providerSort?: string;
   allowFallbacks?: boolean;
@@ -62,6 +64,16 @@ function getProviderPreferences(options: CompletionRequestOptions) {
   return Object.keys(provider).length > 0 ? provider : undefined;
 }
 
+function getReasoningPreferences(options: CompletionRequestOptions) {
+  const effort = options.reasoningEffort?.trim();
+  if (!effort) return undefined;
+
+  return {
+    effort,
+    exclude: options.excludeReasoning !== false,
+  };
+}
+
 export async function fetchCompletion(
   options: CompletionRequestOptions,
   prefix: string,
@@ -87,6 +99,7 @@ export async function fetchCompletion(
     }
 
     const provider = getProviderPreferences(options);
+    const reasoning = getReasoningPreferences(options);
 
     const response = await requestUrl({
       url: normalizeChatCompletionsUrl(options.baseUrl),
@@ -99,6 +112,7 @@ export async function fetchCompletion(
           { role: "user", content: userMessage },
         ],
         ...(provider ? { provider } : {}),
+        ...(reasoning ? { reasoning } : {}),
         max_tokens: 150,
         temperature: 0.3,
         stop: ["\n\n", "---"],

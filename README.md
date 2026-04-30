@@ -29,7 +29,9 @@ Type naturally and get ghost text suggestions that appear inline. Press **Tab** 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | API base URL | `https://openrouter.ai/api/v1/chat/completions` | Any OpenAI-compatible chat completions endpoint |
-| Model | `meta-llama/llama-3.3-70b-instruct:nitro` | Fast, stable default via OpenRouter's Groq provider |
+| Model | `openai/gpt-oss-120b:nitro` | Smart default via OpenRouter's Groq provider |
+| Reasoning effort | `minimal` | Keeps reasoning models fast enough for inline autocomplete |
+| Hide reasoning | On | Excludes reasoning tokens from suggestion text |
 | Provider | `groq` | Forces OpenRouter's Groq provider |
 | Provider sort | `throughput` | Prioritizes high token throughput |
 | Allow fallbacks | Off | Keeps requests on the selected provider |
