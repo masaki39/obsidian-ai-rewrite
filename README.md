@@ -15,7 +15,7 @@ Type naturally and get ghost text suggestions that appear inline. Press **Tab** 
 ## Usage
 
 1. Install the plugin
-2. Go to Settings → Groq Copilot → enter your Groq API key (get one free at [console.groq.com](https://console.groq.com))
+2. Go to Settings → AI Autocomplete → enter your Groq API key (get one free at [console.groq.com](https://console.groq.com))
 3. Start writing — suggestions appear after a brief pause
 
 | Key | Action |
