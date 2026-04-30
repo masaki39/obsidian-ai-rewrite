@@ -1,7 +1,7 @@
 {
   "name": "obsidian-ai-autocomplete",
-  "version": "1.0.0",
-  "description": "AI inline auto-completion for Obsidian powered by Groq",
+  "version": "1.0.1",
+  "description": "AI inline auto-completion for Obsidian powered by OpenAI-compatible APIs",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
