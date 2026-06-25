@@ -1,9 +1,8 @@
-/* Corrected-text preview, rendered on its own block below the source line. */
+/* Corrected-text preview, a block widget rendered on its own line below the
+   source. Sits outside the .cm-line box, so spacing here is authoritative. */
 .ai-correction-ghost {
-  display: block;
   margin: 0;
   padding: 0;
-  line-height: var(--line-height-tight, 1.3);
   color: var(--text-muted);
   font-style: italic;
   white-space: pre-wrap;

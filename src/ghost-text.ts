@@ -3,7 +3,6 @@ import {
   ViewUpdate,
   EditorView,
   Decoration,
-  DecorationSet,
   WidgetType,
   keymap,
 } from "@codemirror/view";
@@ -33,9 +32,10 @@ export interface CorrectionConfig {
   onError?: (e: unknown) => void;
 }
 
-// --- State Management ---
+// --- State + preview decoration ---
 
-// A suggestion is the full replacement for the line range [from, to].
+// A suggestion is the full replacement for the range [from, to]; `anchor` is the
+// end-of-line position where the preview block is rendered.
 export const SuggestionEffect = StateEffect.define<{
   text: string;
   from: number;
@@ -45,47 +45,9 @@ export const SuggestionEffect = StateEffect.define<{
 
 export const ClearSuggestionEffect = StateEffect.define<null>();
 
-interface SuggestionState {
-  text: string | null;
-  from: number;
-  to: number;
-}
-
-export const SuggestionField = StateField.define<SuggestionState>({
-  create() {
-    return { text: null, from: 0, to: 0 };
-  },
-  update(value, tr) {
-    for (const effect of tr.effects) {
-      if (effect.is(ClearSuggestionEffect)) {
-        return { text: null, from: 0, to: 0 };
-      }
-    }
-
-    for (const effect of tr.effects) {
-      if (effect.is(SuggestionEffect)) {
-        // Only accept if the doc has not changed since the request was sent.
-        if (tr.state.doc === effect.value.doc) {
-          return {
-            text: effect.value.text,
-            from: effect.value.from,
-            to: effect.value.to,
-          };
-        }
-      }
-    }
-
-    // Any later doc change or cursor move dismisses the preview.
-    if (tr.docChanged || tr.selection) {
-      return { text: null, from: 0, to: 0 };
-    }
-
-    return value;
-  },
-});
-
-// --- Ghost Preview Widget (rendered below the line) ---
-
+// Rendered as a block widget so the corrected text sits on its own line below
+// the source — outside the .cm-line box, so its spacing is fully controlled by
+// the .ai-correction-ghost CSS rather than the editor's line layout.
 class CorrectionWidget extends WidgetType {
   constructor(readonly text: string) {
     super();
@@ -96,38 +58,65 @@ class CorrectionWidget extends WidgetType {
   }
 
   toDOM() {
-    const span = document.createElement("span");
-    span.className = "ai-correction-ghost";
-    span.textContent = this.text;
-    return span;
+    const el = document.createElement("div");
+    el.className = "ai-correction-ghost";
+    el.textContent = this.text;
+    return el;
   }
 }
 
-const renderPreviewPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet = Decoration.none;
+interface SuggestionState {
+  text: string | null;
+  anchor: number;
+  from: number;
+  to: number;
+}
 
-    update(update: ViewUpdate) {
-      const state = update.state.field(SuggestionField);
-      if (!state.text) {
-        this.decorations = Decoration.none;
-        return;
-      }
+const EMPTY_SUGGESTION: SuggestionState = {
+  text: null,
+  anchor: 0,
+  from: 0,
+  to: 0,
+};
 
-      // Anchor the preview at the end of the affected range's last line; CSS
-      // makes the widget render as its own block, so it appears below.
-      const line = update.state.doc.lineAt(state.to);
-      const widget = Decoration.widget({
-        widget: new CorrectionWidget(state.text),
-        side: 1,
-      });
-      this.decorations = Decoration.set([widget.range(line.to)]);
-    }
+export const SuggestionField = StateField.define<SuggestionState>({
+  create() {
+    return EMPTY_SUGGESTION;
   },
-  {
-    decorations: (v) => v.decorations,
-  }
-);
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(ClearSuggestionEffect)) return EMPTY_SUGGESTION;
+    }
+
+    for (const effect of tr.effects) {
+      if (effect.is(SuggestionEffect)) {
+        // Only accept if the doc has not changed since the request was sent.
+        if (tr.state.doc === effect.value.doc) {
+          const { text, from, to, doc } = effect.value;
+          return { text, from, to, anchor: doc.lineAt(to).to };
+        }
+      }
+    }
+
+    // Any later doc change or cursor move dismisses the preview.
+    if (tr.docChanged || tr.selection) return EMPTY_SUGGESTION;
+
+    return value;
+  },
+  // Block decorations must be provided from the state, not a view plugin.
+  provide: (field) =>
+    EditorView.decorations.from(field, (value) =>
+      value.text == null
+        ? Decoration.none
+        : Decoration.set([
+            Decoration.widget({
+              widget: new CorrectionWidget(value.text),
+              block: true,
+              side: 1,
+            }).range(value.anchor),
+          ])
+    ),
+});
 
 // --- Accept / Dismiss ---
 
@@ -314,7 +303,6 @@ export function correctionExtension(
   return [
     SuggestionField,
     createTriggerPlugin(config),
-    renderPreviewPlugin,
     buildCorrectionKeymap(acceptKeys, dismissKeys),
   ];
 }
