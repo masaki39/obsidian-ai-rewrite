@@ -6,10 +6,12 @@ import {
   CompletionRequestOptions,
   DEFAULT_SYSTEM_PROMPT,
   fetchCompletion,
+  OLLAMA_API_URL,
   OPENROUTER_API_URL,
 } from "./groq-api";
 
 interface AIAutocompleteSettings {
+  preset: string;
   apiKey: string;
   model: string;
   baseUrl: string;
@@ -25,7 +27,39 @@ interface AIAutocompleteSettings {
   enabled: boolean;
 }
 
+// Values applied when a provider preset is selected. apiKey, systemPrompt and
+// other user-tuned fields are intentionally left untouched.
+type ProviderPreset = Pick<
+  AIAutocompleteSettings,
+  | "baseUrl"
+  | "model"
+  | "providerOnly"
+  | "providerSort"
+  | "allowFallbacks"
+  | "reasoningEffort"
+>;
+
+const PROVIDER_PRESETS: Record<string, ProviderPreset> = {
+  openrouter: {
+    baseUrl: OPENROUTER_API_URL,
+    model: "openai/gpt-oss-120b:nitro",
+    providerOnly: "groq",
+    providerSort: "throughput",
+    allowFallbacks: false,
+    reasoningEffort: "minimal",
+  },
+  ollama: {
+    baseUrl: OLLAMA_API_URL,
+    model: "gemma3",
+    providerOnly: "",
+    providerSort: "",
+    allowFallbacks: true,
+    reasoningEffort: "",
+  },
+};
+
 const DEFAULT_SETTINGS: AIAutocompleteSettings = {
+  preset: "openrouter",
   apiKey: "",
   model: "openai/gpt-oss-120b:nitro",
   baseUrl: OPENROUTER_API_URL,
@@ -51,7 +85,7 @@ export default class AIAutocompletePlugin extends Plugin {
 
     this.editorExtensions = inlineSuggestionExtension(
       async (prefix, suffix) => {
-        if (!this.settings.enabled || !this.settings.apiKey) return null;
+        if (!this.settings.enabled) return null;
         try {
           return await fetchCompletion(
             this.getCompletionOptions(),
@@ -103,6 +137,15 @@ export default class AIAutocompletePlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  async applyPreset(preset: string) {
+    this.settings.preset = preset;
+    const values = PROVIDER_PRESETS[preset];
+    if (values) {
+      Object.assign(this.settings, values);
+    }
+    await this.saveSettings();
+  }
+
   getCompletionOptions(): CompletionRequestOptions {
     return {
       apiKey: this.settings.apiKey,
@@ -120,11 +163,6 @@ export default class AIAutocompletePlugin extends Plugin {
   }
 
   async testConnection() {
-    if (!this.settings.apiKey) {
-      new Notice("AI autocomplete: API key is empty");
-      return;
-    }
-
     try {
       const result = await fetchCompletion(
         this.getCompletionOptions(),
@@ -165,8 +203,25 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
+      .setName("Provider preset")
+      .setDesc(
+        "Switch endpoint and model in one step. Choose custom to edit fields manually"
+      )
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("openrouter", "OpenRouter (Groq)")
+          .addOption("ollama", "Ollama (local)")
+          .addOption("custom", "Custom")
+          .setValue(this.plugin.settings.preset)
+          .onChange(async (value) => {
+            await this.plugin.applyPreset(value);
+            this.display();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("API key")
-      .setDesc("Use this key for the default provider route")
+      .setDesc("Use this key for the default provider route. Not needed for Ollama")
       .addText((text) =>
         text
           .setPlaceholder("Enter your API key")
@@ -203,6 +258,10 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
       "openai/gpt-oss-20b:nitro": "OpenAI GPT OSS 20B via Groq (reasoning)",
       "llama-3.3-70b-versatile": "Groq direct: Llama 3.3 70B",
       "openai/gpt-oss-120b": "Groq direct: GPT OSS 120B",
+      gemma3: "Ollama: Gemma 3 (local)",
+      "gemma3:4b": "Ollama: Gemma 3 4B (local)",
+      "gemma3:12b": "Ollama: Gemma 3 12B (local)",
+      "gemma3:27b": "Ollama: Gemma 3 27B (local)",
     };
 
     new Setting(containerEl)
@@ -265,7 +324,7 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("System prompt")
-      .setDesc("Controls the writing style and insight behavior of ghost text")
+      .setDesc("Controls how ghost text continues your note")
       .addTextArea((text) => {
         text.inputEl.rows = 14;
         text.inputEl.cols = 64;
@@ -280,7 +339,7 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Reset prompt")
-      .setDesc("Restore the built-in heuristic prompt")
+      .setDesc("Restore the built-in continuation prompt")
       .addButton((button) =>
         button.setButtonText("Reset").onClick(async () => {
           this.plugin.settings.systemPrompt = DEFAULT_SYSTEM_PROMPT;
