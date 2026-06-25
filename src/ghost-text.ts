@@ -132,20 +132,21 @@ function insertCompletionText(
   };
 }
 
+// Accept the current suggestion. Returns false when none is showing so the key
+// falls through to its default behavior (Tab -> indent, ArrowRight -> move).
+function acceptSuggestion(view: EditorView): boolean {
+  const suggestion = view.state.field(InlineSuggestionState)?.suggestion;
+  if (!suggestion) return false;
+
+  const head = view.state.selection.main.head;
+  view.dispatch(insertCompletionText(view.state, suggestion, head, head));
+  return true;
+}
+
 const ghostTextKeymap = Prec.highest(
   keymap.of([
-    {
-      key: "Tab",
-      run: (view: EditorView) => {
-        const suggestion =
-          view.state.field(InlineSuggestionState)?.suggestion;
-        if (!suggestion) return false;
-
-        const head = view.state.selection.main.head;
-        view.dispatch(insertCompletionText(view.state, suggestion, head, head));
-        return true;
-      },
-    },
+    { key: "Tab", run: acceptSuggestion },
+    { key: "ArrowRight", run: acceptSuggestion },
     {
       key: "Escape",
       run: (view: EditorView) => {

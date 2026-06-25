@@ -2,7 +2,7 @@
 
 AI inline writing completion for Obsidian, powered by OpenAI-compatible APIs. The default setup routes through [OpenRouter](https://openrouter.ai) to the Groq provider for fast inference.
 
-Type naturally and get ghost text suggestions that appear inline. Press **Tab** to accept, **Esc** to dismiss.
+Type naturally and get ghost text suggestions that appear inline. Press **Tab** or **→** to accept, **Esc** to dismiss.
 
 ## Features
 
@@ -21,9 +21,11 @@ Type naturally and get ghost text suggestions that appear inline. Press **Tab** 
 
 | Key | Action |
 |-----|--------|
-| Tab | Accept suggestion |
+| Tab or → | Accept suggestion |
 | Esc | Dismiss suggestion |
 | Keep typing | Suggestion auto-dismisses |
+
+When no suggestion is showing, Tab and → behave normally (indent / move cursor), so they only conflict while ghost text is visible.
 
 ## Use a local Ollama model (gemma3)
 
