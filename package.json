@@ -3,6 +3,7 @@
   "version": "1.0.5",
   "description": "AI inline auto-completion for Obsidian powered by OpenAI-compatible APIs",
   "main": "main.js",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production"

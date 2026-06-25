@@ -1,0 +1,3 @@
+# Allow esbuild to run its postinstall so the platform-specific binary is fetched.
+allowBuilds:
+  esbuild: true
