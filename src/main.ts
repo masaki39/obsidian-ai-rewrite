@@ -1,4 +1,12 @@
-import { Plugin, PluginSettingTab, App, Setting, Notice, Menu } from "obsidian";
+import {
+  Plugin,
+  PluginSettingTab,
+  App,
+  Setting,
+  Notice,
+  Menu,
+  parseFrontMatterAliases,
+} from "obsidian";
 import { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
@@ -14,6 +22,51 @@ import {
   OLLAMA_API_URL,
 } from "./api";
 import { DEFAULT_MODES, Mode, buildModePrompt } from "./modes";
+import { LinkCandidate, Linkifier, createLinkifier } from "./links";
+
+type CorrectFn = (content: string, multiline: boolean) => Promise<string | null>;
+
+// Serialize calls to `fn` so at most one runs at a time. While one is in flight,
+// only the most recent queued call survives (latest-wins); earlier queued calls
+// resolve to null so their callers skip silently. This keeps overlapping
+// requests from reaching the backend — Ollama serializes same-model requests and
+// stalls when a second arrives before the first returns.
+function singleFlight(fn: CorrectFn): CorrectFn {
+  let active: Promise<unknown> | null = null;
+  let pending: {
+    args: [string, boolean];
+    resolve: (v: string | null) => void;
+    reject: (e: unknown) => void;
+  } | null = null;
+
+  const runPending = () => {
+    if (!pending) {
+      active = null;
+      return;
+    }
+    const job = pending;
+    pending = null;
+    active = fn(job.args[0], job.args[1]).then(
+      (v) => {
+        job.resolve(v);
+        runPending();
+      },
+      (e) => {
+        job.reject(e);
+        runPending();
+      }
+    );
+  };
+
+  return (content, multiline) =>
+    new Promise<string | null>((resolve, reject) => {
+      // Supersede a still-waiting request: it resolves to null so its caller
+      // bails without touching the editor.
+      if (pending) pending.resolve(null);
+      pending = { args: [content, multiline], resolve, reject };
+      if (!active) runPending();
+    });
+}
 
 interface AIRewriteSettings {
   baseUrl: string;
@@ -27,6 +80,7 @@ interface AIRewriteSettings {
   acceptKeys: string;
   dismissKeys: string;
   enabled: boolean;
+  autoLink: boolean;
 }
 
 const DEFAULT_SETTINGS: AIRewriteSettings = {
@@ -41,6 +95,7 @@ const DEFAULT_SETTINGS: AIRewriteSettings = {
   acceptKeys: "Tab ArrowRight",
   dismissKeys: "Escape",
   enabled: true,
+  autoLink: false,
 };
 
 export default class AIRewritePlugin extends Plugin {
@@ -49,18 +104,18 @@ export default class AIRewritePlugin extends Plugin {
   private editorExtensions: Extension[] = [];
   private statusBar: HTMLElement | null = null;
   private lastErrorNoticeAt = 0;
+  private linkifier: Linkifier | null = null;
+  private linkIndexDirty = true;
 
   async onload() {
     await this.loadSettings();
 
     this.config = {
-      correct: (content, multiline) =>
-        fetchTransform(
-          this.getCompletionOptions(),
-          buildModePrompt(this.getActiveMode(), this.settings.targetLang),
-          content,
-          multiline
-        ),
+      // singleFlight wraps the whole transform so overlapping triggers never
+      // hit the backend concurrently (see singleFlight for the Ollama rationale).
+      correct: singleFlight((content, multiline) =>
+        this.transform(content, multiline)
+      ),
       getTriggerMode: () => this.settings.triggerMode,
       getDelay: () => this.settings.delay,
       isEnabled: () => this.settings.enabled,
@@ -69,6 +124,17 @@ export default class AIRewritePlugin extends Plugin {
 
     this.editorExtensions = this.buildExtensions();
     this.registerEditorExtension(this.editorExtensions);
+
+    // Invalidate the cached link index when notes, titles, or aliases change.
+    this.registerEvent(
+      this.app.metadataCache.on("changed", () => (this.linkIndexDirty = true))
+    );
+    this.registerEvent(
+      this.app.metadataCache.on("deleted", () => (this.linkIndexDirty = true))
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", () => (this.linkIndexDirty = true))
+    );
 
     this.statusBar = this.addStatusBarItem();
     this.statusBar.addClass("mod-clickable");
@@ -204,6 +270,43 @@ export default class AIRewritePlugin extends Plugin {
       baseUrl: this.settings.baseUrl,
       apiKey: this.settings.apiKey,
     };
+  }
+
+  // Run the active mode's transform, then (optionally) wrap matches against
+  // existing notes/aliases in wiki links.
+  private async transform(
+    content: string,
+    multiline: boolean
+  ): Promise<string | null> {
+    const result = await fetchTransform(
+      this.getCompletionOptions(),
+      buildModePrompt(this.getActiveMode(), this.settings.targetLang),
+      content,
+      multiline
+    );
+    if (!result || !this.settings.autoLink) return result;
+    const current = this.app.workspace.getActiveFile()?.basename;
+    return this.getLinkifier().linkify(result, current);
+  }
+
+  // Lazily (re)build the basename + alias index used for auto-linking. Cached
+  // until a vault/metadata change marks it dirty.
+  private getLinkifier(): Linkifier {
+    if (this.linkifier && !this.linkIndexDirty) return this.linkifier;
+    const candidates: LinkCandidate[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      candidates.push({ name: file.basename, path: file.basename });
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const aliases = parseFrontMatterAliases(frontmatter);
+      if (aliases) {
+        for (const alias of aliases) {
+          candidates.push({ name: alias, path: file.basename });
+        }
+      }
+    }
+    this.linkifier = createLinkifier(candidates);
+    this.linkIndexDirty = false;
+    return this.linkifier;
   }
 
   async testConnection() {
@@ -342,6 +445,20 @@ class AIRewriteSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.enabled)
           .onChange(async (value) => {
             this.plugin.settings.enabled = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Auto-link existing notes")
+      .setDesc(
+        "After rewriting, wrap text matching an existing note title or alias in [[wiki links]]. Case-insensitive, first occurrence per note; skips code, URLs and existing links"
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoLink)
+          .onChange(async (value) => {
+            this.plugin.settings.autoLink = value;
             await this.plugin.saveSettings();
           })
       );
