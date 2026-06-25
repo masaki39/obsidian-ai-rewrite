@@ -238,19 +238,30 @@ function createTriggerPlugin(config: CorrectionConfig) {
       private timer: ReturnType<typeof setTimeout> | null = null;
       private lastLine = -1;
       private dirty = false;
+      // A document position inside the line we're waiting to correct. Stored as
+      // a position (not a line number) and remapped through every edit so an
+      // edit elsewhere during the debounce can't make the timer correct the
+      // wrong line.
+      private pendingPos: number | null = null;
 
       update(update: ViewUpdate) {
+        // Keep a scheduled position valid across edits made during the debounce.
+        if (this.pendingPos != null && update.docChanged) {
+          this.pendingPos = update.changes.mapPos(this.pendingPos, 1);
+        }
+
         const mode = config.getTriggerMode();
         if (mode === "onDemand") return;
         if (!update.docChanged && !update.selectionSet) return;
 
         const view = update.view;
-        const currentLine = update.state.doc.lineAt(
-          update.state.selection.main.head
-        ).number;
+        const doc = update.state.doc;
+        const currentLine = doc.lineAt(update.state.selection.main.head).number;
 
         if (mode === "typing") {
-          if (update.docChanged) this.schedule(view, currentLine);
+          if (update.docChanged) {
+            this.schedule(view, update.state.selection.main.head);
+          }
           return;
         }
 
@@ -264,12 +275,24 @@ function createTriggerPlugin(config: CorrectionConfig) {
         const leftDirty = this.dirty;
         this.lastLine = currentLine;
         this.dirty = false;
-        if (leftLine !== -1 && leftDirty) this.schedule(view, leftLine);
+        // The line you left still exists in this doc (you only moved the
+        // cursor), but guard the bounds in case an edit shrank the document.
+        if (leftLine >= 1 && leftLine <= doc.lines && leftDirty) {
+          this.schedule(view, doc.line(leftLine).from);
+        }
       }
 
-      private schedule(view: EditorView, lineNumber: number) {
+      private schedule(view: EditorView, pos: number) {
+        this.pendingPos = pos;
         if (this.timer) clearTimeout(this.timer);
         this.timer = setTimeout(() => {
+          const p = this.pendingPos;
+          this.pendingPos = null;
+          if (p == null) return;
+          // Bail if the trigger mode was switched to on-demand while we waited —
+          // an automatic preview would be unexpected after that switch.
+          if (config.getTriggerMode() === "onDemand") return;
+          const lineNumber = view.state.doc.lineAt(p).number;
           const target = lineTarget(view, lineNumber);
           if (target) void showCorrection(view, target, config);
         }, config.getDelay());

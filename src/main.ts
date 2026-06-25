@@ -323,17 +323,34 @@ export default class AIRewritePlugin extends Plugin {
   // until a vault/metadata change marks it dirty.
   private getLinkifier(): Linkifier {
     if (this.linkifier && !this.linkIndexDirty) return this.linkifier;
-    const candidates: LinkCandidate[] = [];
+
+    // Collect every surface (basename or alias) along with the set of distinct
+    // notes that claim it. A surface owned by more than one note is ambiguous —
+    // a bare [[basename]] can't say which note was meant — so it's dropped
+    // rather than risk linking to the wrong one (this also stops a reference to
+    // a same-named *other* note from being wrongly suppressed as a self-link).
+    const owners = new Map<string, Set<string>>();
+    const surfaces: LinkCandidate[] = [];
+    const note = (name: string, target: string, identity: string) => {
+      const key = name.trim().toLowerCase();
+      if (!key) return;
+      let set = owners.get(key);
+      if (!set) owners.set(key, (set = new Set()));
+      set.add(identity);
+      surfaces.push({ name, path: target });
+    };
     for (const file of this.app.vault.getMarkdownFiles()) {
-      candidates.push({ name: file.basename, path: file.basename });
+      note(file.basename, file.basename, file.path);
       const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
       const aliases = parseFrontMatterAliases(frontmatter);
       if (aliases) {
-        for (const alias of aliases) {
-          candidates.push({ name: alias, path: file.basename });
-        }
+        for (const alias of aliases) note(alias, file.basename, file.path);
       }
     }
+    const candidates = surfaces.filter(
+      (s) => owners.get(s.name.trim().toLowerCase())?.size === 1
+    );
+
     this.linkifier = createLinkifier(candidates);
     this.linkIndexDirty = false;
     return this.linkifier;
@@ -573,7 +590,9 @@ class AIRewriteSettingTab extends PluginSettingTab {
       .addButton((button) =>
         button.setButtonText("Add mode").onClick(async () => {
           this.plugin.settings.modes.push({
-            id: `mode-${Date.now()}`,
+            // Random suffix so two adds in the same millisecond can't collide
+            // (a collision would break the per-mode command + active-mode lookup).
+            id: `mode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             name: "New mode",
             prompt:
               "Rewrite the text. Output ONLY the result, with no quotes and no explanation.",

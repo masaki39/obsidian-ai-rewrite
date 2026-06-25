@@ -73,6 +73,11 @@ export async function fetchTransform(
       requestUrl({
         url: normalizeChatCompletionsUrl(options.baseUrl),
         method: "POST",
+        // Handle non-2xx ourselves: requestUrl's default (throw: true) rejects
+        // with a generic "status N" before we can read the body, hiding the
+        // OpenAI-style { error: { message } } that names the real problem
+        // (unknown model, bad key, …). Take the body and surface that instead.
+        throw: false,
         headers: {
           "Content-Type": "application/json",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -99,14 +104,28 @@ export async function fetchTransform(
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     );
 
-    const data = response.json;
-    if (data?.error?.message) {
-      throw new CompletionError(String(data.error.message));
+    // The body may not be JSON (e.g. a proxy's HTML 502 page); `.json` throws on
+    // parse failure, so guard it and fall back to the HTTP status.
+    let data: any = null;
+    try {
+      data = response.json;
+    } catch {
+      data = null;
+    }
+
+    if (response.status >= 400 || data?.error?.message) {
+      throw new CompletionError(
+        data?.error?.message
+          ? String(data.error.message)
+          : `Request failed (HTTP ${response.status})`
+      );
     }
 
     const text = data?.choices?.[0]?.message?.content;
     if (!text) return null;
-    const normalized = text.replace(/^["']|["']$/g, "").trim();
+    // Trim first so surrounding whitespace can't shield the wrapping quotes,
+    // then strip a single leading/trailing quote and trim again.
+    const normalized = text.trim().replace(/^["']|["']$/g, "").trim();
     return normalized || null;
   } catch (e) {
     if (e instanceof CompletionError) throw e;

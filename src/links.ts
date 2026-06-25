@@ -43,7 +43,10 @@ export function createLinkifier(candidates: LinkCandidate[]): Linkifier {
 
   // ASCII word-boundary guards stop "AI" from matching inside "rain" while still
   // allowing CJK matches — Japanese has no spaces, so a Unicode-letter boundary
-  // would block every in-sentence match.
+  // would block every in-sentence match. The unavoidable cost is that a CJK
+  // candidate can match inside a longer CJK token (e.g. a note "日本" linking
+  // inside "日本語"); there is no boundary that both allows "日本" + particle and
+  // rejects "日本" + "語", so we accept the occasional over-match here.
   const matchRe = new RegExp(
     "(?<![A-Za-z0-9_])(" + names.map(escapeRegExp).join("|") + ")(?![A-Za-z0-9_])",
     "gi"
