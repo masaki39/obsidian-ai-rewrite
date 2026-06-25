@@ -5,6 +5,9 @@ export const OLLAMA_API_URL = "http://localhost:11434/v1";
 export interface CompletionRequestOptions {
   model: string;
   baseUrl: string;
+  // Optional bearer token for authenticated OpenAI-compatible endpoints. Local
+  // servers (Ollama, LM Studio, …) don't need it, so it's left blank by default.
+  apiKey?: string;
 }
 
 export class CompletionError extends Error {
@@ -32,10 +35,14 @@ export async function fetchTransform(
   multiline = false
 ): Promise<string | null> {
   try {
+    const apiKey = options.apiKey?.trim();
     const response = await requestUrl({
       url: normalizeChatCompletionsUrl(options.baseUrl),
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model: options.model,
         messages: [

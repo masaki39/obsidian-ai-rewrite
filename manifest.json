@@ -1,9 +1,10 @@
 {
-  "id": "ai-autocomplete",
-  "name": "AI Autocomplete",
+  "id": "ai-rewrite",
+  "name": "AI Rewrite",
   "version": "1.0.5",
   "minAppVersion": "0.15.0",
-  "description": "Local-first, line-level AI proofreading, translation and rephrasing. Shows a ghost preview below the line; Tab to replace.",
+  "description": "Local-first, line-level AI rewriting: proofread, translate, or your own custom modes. Shows a ghost preview below the line; Tab to apply.",
   "author": "masaki39",
+  "authorUrl": "https://github.com/masaki39",
   "isDesktopOnly": false
 }

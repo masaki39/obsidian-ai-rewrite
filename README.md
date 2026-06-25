@@ -1,4 +1,4 @@
-# AI Autocomplete
+# AI Rewrite
 
 Local-first, **line-level** AI writing assistance for Obsidian, built for
 [Ollama](https://ollama.com). Instead of guessing what you'll write next, it
@@ -80,8 +80,12 @@ Examples: `Tab ArrowRight` (accept on either) · `Escape` · `Ctrl-Space` ·
 3. Enable the plugin. It defaults to `http://localhost:11434/v1` with model
    `gemma3` — change the **Model** in Settings if you pulled a different one.
 
-Any OpenAI-compatible local server (LM Studio, vLLM, …) works too: point **Base
-URL** at it in Settings.
+Any OpenAI-compatible server works too — point **Base URL** at it in Settings:
+
+- **Local, no auth** (LM Studio, vLLM, …): just set the Base URL.
+- **Remote, authenticated** (OpenAI, OpenRouter, …): set the Base URL and the
+  **API key**. The key is sent as a `Bearer` token. Note this sends your note
+  content to that service, so it is no longer local-only.
 
 ## Development
 

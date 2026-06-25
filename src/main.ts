@@ -15,9 +15,10 @@ import {
 } from "./api";
 import { DEFAULT_MODES, Mode, buildModePrompt } from "./modes";
 
-interface AIAutocompleteSettings {
+interface AIRewriteSettings {
   baseUrl: string;
   model: string;
+  apiKey: string;
   modes: Mode[];
   activeModeId: string;
   targetLang: string;
@@ -28,9 +29,10 @@ interface AIAutocompleteSettings {
   enabled: boolean;
 }
 
-const DEFAULT_SETTINGS: AIAutocompleteSettings = {
+const DEFAULT_SETTINGS: AIRewriteSettings = {
   baseUrl: OLLAMA_API_URL,
   model: "gemma3",
+  apiKey: "",
   modes: [],
   activeModeId: "proofread",
   targetLang: "English",
@@ -41,8 +43,8 @@ const DEFAULT_SETTINGS: AIAutocompleteSettings = {
   enabled: true,
 };
 
-export default class AIAutocompletePlugin extends Plugin {
-  settings: AIAutocompleteSettings = DEFAULT_SETTINGS;
+export default class AIRewritePlugin extends Plugin {
+  settings: AIRewriteSettings = DEFAULT_SETTINGS;
   config!: CorrectionConfig;
   private editorExtensions: Extension[] = [];
   private statusBar: HTMLElement | null = null;
@@ -118,7 +120,7 @@ export default class AIAutocompletePlugin extends Plugin {
       },
     });
 
-    this.addSettingTab(new AIAutocompleteSettingTab(this.app, this));
+    this.addSettingTab(new AIRewriteSettingTab(this.app, this));
   }
 
   buildExtensions(): Extension[] {
@@ -200,6 +202,7 @@ export default class AIAutocompletePlugin extends Plugin {
     return {
       model: this.settings.model,
       baseUrl: this.settings.baseUrl,
+      apiKey: this.settings.apiKey,
     };
   }
 
@@ -231,10 +234,10 @@ export default class AIAutocompletePlugin extends Plugin {
   }
 }
 
-class AIAutocompleteSettingTab extends PluginSettingTab {
-  plugin: AIAutocompletePlugin;
+class AIRewriteSettingTab extends PluginSettingTab {
+  plugin: AIRewritePlugin;
 
-  constructor(app: App, plugin: AIAutocompletePlugin) {
+  constructor(app: App, plugin: AIRewritePlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
@@ -289,7 +292,7 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
           );
           frag.createEl("a", {
             text: "Key name reference",
-            href: "https://github.com/masaki39/obsidian-ai-autocomplete#key-name-reference",
+            href: "https://github.com/masaki39/obsidian-ai-rewrite#key-name-reference",
           });
         })
       )
@@ -428,11 +431,11 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
   }
 
   private renderConnectionSettings(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName("Ollama").setHeading();
+    new Setting(containerEl).setName("Connection").setHeading();
 
     new Setting(containerEl)
       .setName("Base URL")
-      .setDesc("Ollama's OpenAI-compatible endpoint")
+      .setDesc("OpenAI-compatible endpoint (Ollama by default)")
       .addText((text) =>
         text
           .setPlaceholder(OLLAMA_API_URL)
@@ -457,7 +460,23 @@ class AIAutocompleteSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Connection")
+      .setName("API key")
+      .setDesc(
+        "Optional. Leave blank for local servers (Ollama, LM Studio). Set it for authenticated endpoints (OpenAI, OpenRouter); sent as a Bearer token"
+      )
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text
+          .setPlaceholder("sk-...")
+          .setValue(this.plugin.settings.apiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.apiKey = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Test connection")
       .setDesc("Send a short test request with the current settings")
       .addButton((button) =>
         button.setButtonText("Test").onClick(() => {

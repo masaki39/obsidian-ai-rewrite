@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-ai-autocomplete",
+  "name": "obsidian-ai-rewrite",
   "version": "1.0.5",
-  "description": "AI inline auto-completion for Obsidian powered by OpenAI-compatible APIs",
+  "description": "Line-level AI rewriting for Obsidian (proofread, translate, custom modes) powered by local OpenAI-compatible models",
   "main": "main.js",
   "packageManager": "pnpm@11.6.0",
   "scripts": {
