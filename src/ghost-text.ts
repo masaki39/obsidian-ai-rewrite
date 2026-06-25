@@ -30,6 +30,9 @@ export interface CorrectionConfig {
   getDelay: () => number;
   isEnabled: () => boolean;
   onError?: (e: unknown) => void;
+  // Called only for an explicit (manual) request that produced no preview
+  // because the text was already fine. Automatic triggers stay silent.
+  onNoChange?: () => void;
 }
 
 // --- State + preview decoration ---
@@ -196,7 +199,8 @@ function lineTarget(view: EditorView, lineNumber: number): Target | null {
 async function showCorrection(
   view: EditorView,
   target: Target,
-  config: CorrectionConfig
+  config: CorrectionConfig,
+  manual = false
 ): Promise<void> {
   if (!config.isEnabled()) return;
   // Skip empty / whitespace-only ranges (e.g. blank lines).
@@ -206,8 +210,12 @@ async function showCorrection(
   try {
     const transformed = await config.correct(target.content, target.multiline);
     if (transformed == null) return;
-    // Nothing meaningful changed — don't bother the user with a preview.
-    if (transformed.trim() === target.content.trim()) return;
+    // Nothing meaningful changed — don't bother the user with a preview, but
+    // let an explicit request acknowledge that it ran (and found nothing).
+    if (transformed.trim() === target.content.trim()) {
+      if (manual) config.onNoChange?.();
+      return;
+    }
 
     view.dispatch({
       effects: SuggestionEffect.of({
@@ -293,12 +301,13 @@ export function triggerCurrent(
         prefix: "",
         multiline: true,
       },
-      config
+      config,
+      true
     );
   }
   const lineNumber = view.state.doc.lineAt(sel.head).number;
   const target = lineTarget(view, lineNumber);
-  return target ? showCorrection(view, target, config) : Promise.resolve();
+  return target ? showCorrection(view, target, config, true) : Promise.resolve();
 }
 
 export function correctionExtension(

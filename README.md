@@ -87,6 +87,11 @@ Any OpenAI-compatible server works too — point **Base URL** at it in Settings:
   **API key**. The key is sent as a `Bearer` token. Note this sends your note
   content to that service, so it is no longer local-only.
 
+The status bar shows a `⟳` while a request is in flight. Each request gives up
+after the **Request timeout** (Settings, default 30s) so a stalled model can't
+silently jam later suggestions — raise it if a slow model's first response
+(while it loads) gets cut off.
+
 ## Development
 
 This project uses [pnpm](https://pnpm.io).

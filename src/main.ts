@@ -20,6 +20,7 @@ import {
   CompletionRequestOptions,
   fetchTransform,
   OLLAMA_API_URL,
+  DEFAULT_TIMEOUT_MS,
 } from "./api";
 import { DEFAULT_MODES, Mode, buildModePrompt } from "./modes";
 import { LinkCandidate, Linkifier, createLinkifier } from "./links";
@@ -31,7 +32,10 @@ type CorrectFn = (content: string, multiline: boolean) => Promise<string | null>
 // resolve to null so their callers skip silently. This keeps overlapping
 // requests from reaching the backend — Ollama serializes same-model requests and
 // stalls when a second arrives before the first returns.
-function singleFlight(fn: CorrectFn): CorrectFn {
+function singleFlight(
+  fn: CorrectFn,
+  onBusyChange?: (busy: boolean) => void
+): CorrectFn {
   let active: Promise<unknown> | null = null;
   let pending: {
     args: [string, boolean];
@@ -39,13 +43,19 @@ function singleFlight(fn: CorrectFn): CorrectFn {
     reject: (e: unknown) => void;
   } | null = null;
 
+  // Reports "busy" for the whole span work is queued here — true while a call is
+  // running OR another is waiting behind it, false only once the chain drains.
+  // Reporting from here (rather than around `fn`) keeps the signal from flicking
+  // off between two back-to-back serialized calls.
   const runPending = () => {
     if (!pending) {
       active = null;
+      onBusyChange?.(false);
       return;
     }
     const job = pending;
     pending = null;
+    onBusyChange?.(true);
     active = fn(job.args[0], job.args[1]).then(
       (v) => {
         job.resolve(v);
@@ -77,6 +87,7 @@ interface AIRewriteSettings {
   targetLang: string;
   triggerMode: TriggerMode;
   delay: number;
+  timeout: number;
   acceptKeys: string;
   dismissKeys: string;
   enabled: boolean;
@@ -92,6 +103,7 @@ const DEFAULT_SETTINGS: AIRewriteSettings = {
   targetLang: "English",
   triggerMode: "onDemand",
   delay: 800,
+  timeout: 30,
   acceptKeys: "Tab ArrowRight",
   dismissKeys: "Escape",
   enabled: true,
@@ -106,6 +118,8 @@ export default class AIRewritePlugin extends Plugin {
   private lastErrorNoticeAt = 0;
   private linkifier: Linkifier | null = null;
   private linkIndexDirty = true;
+  // True while a request is in flight, so the status bar can show progress.
+  private busy = false;
 
   async onload() {
     await this.loadSettings();
@@ -113,13 +127,16 @@ export default class AIRewritePlugin extends Plugin {
     this.config = {
       // singleFlight wraps the whole transform so overlapping triggers never
       // hit the backend concurrently (see singleFlight for the Ollama rationale).
-      correct: singleFlight((content, multiline) =>
-        this.transform(content, multiline)
+      // It also drives the status-bar spinner for the full in-flight span.
+      correct: singleFlight(
+        (content, multiline) => this.transform(content, multiline),
+        (busy) => this.setBusy(busy)
       ),
       getTriggerMode: () => this.settings.triggerMode,
       getDelay: () => this.settings.delay,
       isEnabled: () => this.settings.enabled,
       onError: (e) => this.showCompletionError(e),
+      onNoChange: () => new Notice("AI suggestions: no changes needed"),
     };
 
     this.editorExtensions = this.buildExtensions();
@@ -261,14 +278,27 @@ export default class AIRewritePlugin extends Plugin {
   updateStatusBar() {
     if (!this.statusBar) return;
     const mode = this.getActiveMode();
-    this.statusBar.setText(mode ? `AI: ${mode.name}` : "AI");
+    const label = mode ? `AI: ${mode.name}` : "AI";
+    // A trailing spinner glyph signals an in-flight request — the only feedback
+    // during the wait, which matters most for the on-demand trigger.
+    this.statusBar.setText(this.busy ? `${label} ⟳` : label);
+  }
+
+  private setBusy(busy: boolean) {
+    this.busy = busy;
+    this.updateStatusBar();
   }
 
   getCompletionOptions(): CompletionRequestOptions {
+    // Guard against a non-positive / NaN persisted value (an old build, a hand-
+    // edited data.json): fall back to the default rather than silently disabling
+    // the timeout, which is exactly the failure mode this setting prevents.
+    const timeout = this.settings.timeout;
     return {
       model: this.settings.model,
       baseUrl: this.settings.baseUrl,
       apiKey: this.settings.apiKey,
+      timeoutMs: timeout > 0 ? timeout * 1000 : DEFAULT_TIMEOUT_MS,
     };
   }
 
@@ -382,6 +412,22 @@ class AIRewriteSettingTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.delay = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Request timeout (s)")
+      .setDesc(
+        "Give up on a request after this long. Prevents a stalled model from jamming further suggestions. Raise it if a slow model's first response gets cut off"
+      )
+      .addSlider((slider) =>
+        slider
+          .setLimits(5, 120, 5)
+          .setValue(this.plugin.settings.timeout)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.timeout = value;
             await this.plugin.saveSettings();
           })
       );
