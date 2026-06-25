@@ -229,10 +229,12 @@ function createTriggerPlugin(config: CorrectionConfig) {
     class {
       private timer: ReturnType<typeof setTimeout> | null = null;
       private lastLine = -1;
+      private dirty = false;
 
       update(update: ViewUpdate) {
         const mode = config.getTriggerMode();
         if (mode === "onDemand") return;
+        if (!update.docChanged && !update.selectionSet) return;
 
         const view = update.view;
         const currentLine = update.state.doc.lineAt(
@@ -240,17 +242,21 @@ function createTriggerPlugin(config: CorrectionConfig) {
         ).number;
 
         if (mode === "typing") {
-          if (!update.docChanged) return;
-          this.schedule(view, currentLine);
+          if (update.docChanged) this.schedule(view, currentLine);
           return;
         }
 
-        // onLeave: correct the line the cursor just left.
-        if (!update.selectionSet && !update.docChanged) return;
-        if (currentLine === this.lastLine) return;
+        // onLeave: only correct a line you actually edited, and only once you
+        // move off it. Plain navigation (arrows, clicks) never fires.
+        if (currentLine === this.lastLine) {
+          if (update.docChanged) this.dirty = true;
+          return;
+        }
         const leftLine = this.lastLine;
+        const leftDirty = this.dirty;
         this.lastLine = currentLine;
-        if (leftLine !== -1) this.schedule(view, leftLine);
+        this.dirty = false;
+        if (leftLine !== -1 && leftDirty) this.schedule(view, leftLine);
       }
 
       private schedule(view: EditorView, lineNumber: number) {
