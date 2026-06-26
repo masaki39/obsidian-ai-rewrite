@@ -96,13 +96,13 @@ Notes:
 
 - One Markdown file per version under `changelog/`: `changelog/<version>.md` (e.g. `changelog/0.0.2.md`). Do **not** add or maintain a `CHANGELOG.md` at the repo root.
 - Each file starts with a `## What's Changed` heading, followed by `###` sections such as `Bug Fixes`, `New Features`, `Added`, `Changed`, `Removed`.
-- Bullets are written in **Japanese** with a bold lead-in summarizing the change, then a colon and detail. Example:
+- Bullets are written in **English** with a bold lead-in summarizing the change, then a colon and detail. Example:
   ```markdown
   ## What's Changed
 
   ### Bug Fixes
 
-  - **ゴーストプレビューが消えない問題を修正**: 選択範囲を置き換えた直後に...
+  - **Fix ghost preview not clearing**: after replacing a selection, the preview...
   ```
 
 ## Security, privacy, and compliance
