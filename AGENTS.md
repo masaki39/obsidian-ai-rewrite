@@ -9,7 +9,7 @@
 
 ## Environment & tooling
 
-- Node.js: current LTS (Node 18+; CI uses Node 20).
+- Node.js: Node 22+ (the pinned `packageManager` pnpm needs Node ≥ 22.13; CI uses Node 22).
 - **Package manager: pnpm** (`pnpm-lock.yaml` is the lockfile; `preinstall` enforces pnpm via `only-allow`). Always use `pnpm install`, `pnpm run build`, etc. Never commit `package-lock.json` / `yarn.lock`.
 - **Bundler: esbuild** (`esbuild.config.mjs`). `obsidian`, `electron`, and the CodeMirror packages are marked external (provided by Obsidian at runtime).
 - Types: `obsidian` type definitions.
