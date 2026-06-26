@@ -14,6 +14,7 @@ import {
   EditorSelection,
   Extension,
   TransactionSpec,
+  Annotation,
 } from "@codemirror/state";
 import { stripLinePrefix } from "./modes";
 
@@ -123,6 +124,12 @@ export const SuggestionField = StateField.define<SuggestionState>({
 
 // --- Accept / Dismiss ---
 
+// Marks the edit that applies an accepted suggestion. The automatic trigger
+// reads this to ignore that edit — otherwise accepting a suggestion is itself a
+// doc change that would re-fire a correction on the line you just accepted
+// (a fresh preview right after every Tab, looping in "typing" mode).
+const AcceptedSuggestion = Annotation.define<boolean>();
+
 function acceptSuggestion(view: EditorView): boolean {
   const { text, from, to } = view.state.field(SuggestionField);
   if (text == null) return false;
@@ -131,6 +138,7 @@ function acceptSuggestion(view: EditorView): boolean {
   const spec: TransactionSpec = {
     changes: { from, to, insert: text },
     userEvent: "input.complete",
+    annotations: AcceptedSuggestion.of(true),
   };
   // If the cursor sits on the line being corrected, drop it at the end of the
   // new text so you can keep writing. If it is elsewhere (e.g. the "on leave"
@@ -254,12 +262,19 @@ function createTriggerPlugin(config: CorrectionConfig) {
         if (mode === "onDemand") return;
         if (!update.docChanged && !update.selectionSet) return;
 
+        // The edit that applies an accepted suggestion is a doc change too;
+        // treat it as if no edit happened so accepting never re-triggers a
+        // correction on the line you just accepted.
+        const fromAccept = update.transactions.some(
+          (tr) => tr.annotation(AcceptedSuggestion) === true
+        );
+
         const view = update.view;
         const doc = update.state.doc;
         const currentLine = doc.lineAt(update.state.selection.main.head).number;
 
         if (mode === "typing") {
-          if (update.docChanged) {
+          if (update.docChanged && !fromAccept) {
             this.schedule(view, update.state.selection.main.head);
           }
           return;
@@ -268,7 +283,7 @@ function createTriggerPlugin(config: CorrectionConfig) {
         // onLeave: only correct a line you actually edited, and only once you
         // move off it. Plain navigation (arrows, clicks) never fires.
         if (currentLine === this.lastLine) {
-          if (update.docChanged) this.dirty = true;
+          if (update.docChanged && !fromAccept) this.dirty = true;
           return;
         }
         const leftLine = this.lastLine;
