@@ -1,11 +1,11 @@
 {
-  "id": "ai-rewrite",
-  "name": "AI Rewrite",
-  "version": "0.0.2",
-  "minAppVersion": "1.1.0",
-  "description": "AI proofreading, grammar and spelling fixes, and translation for your notes. Rewrites the current line with a local model (Ollama) or any OpenAI-compatible API — private, on-demand, Tab to apply.",
-  "author": "masaki39",
-  "authorUrl": "https://github.com/masaki39",
-  "fundingUrl": "https://ko-fi.com/masaki39",
-  "isDesktopOnly": false
+	"id": "ai-rewrite",
+	"name": "AI Rewrite",
+	"version": "0.0.3",
+	"minAppVersion": "1.1.0",
+	"description": "AI proofreading, grammar and spelling fixes, and translation for your notes. Rewrites the current line with a local model (Ollama) or any OpenAI-compatible API — private, on-demand, Tab to apply.",
+	"author": "masaki39",
+	"authorUrl": "https://github.com/masaki39",
+	"fundingUrl": "https://ko-fi.com/masaki39",
+	"isDesktopOnly": false
 }
