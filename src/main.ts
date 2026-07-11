@@ -92,6 +92,7 @@ interface AIRewriteSettings {
   dismissKeys: string;
   enabled: boolean;
   autoLink: boolean;
+  showStatusBar: boolean;
 }
 
 const DEFAULT_SETTINGS: AIRewriteSettings = {
@@ -108,6 +109,7 @@ const DEFAULT_SETTINGS: AIRewriteSettings = {
   dismissKeys: "Escape",
   enabled: true,
   autoLink: false,
+  showStatusBar: true,
 };
 
 export default class AIRewritePlugin extends Plugin {
@@ -153,10 +155,7 @@ export default class AIRewritePlugin extends Plugin {
       this.app.vault.on("rename", () => (this.linkIndexDirty = true))
     );
 
-    this.statusBar = this.addStatusBarItem();
-    this.statusBar.addClass("mod-clickable");
-    this.statusBar.addEventListener("click", (e) => this.showModeMenu(e));
-    this.updateStatusBar();
+    this.setStatusBarVisible(this.settings.showStatusBar);
 
     this.addCommand({
       id: "correct-line",
@@ -284,6 +283,19 @@ export default class AIRewritePlugin extends Plugin {
   private setBusy(busy: boolean) {
     this.busy = busy;
     this.updateStatusBar();
+  }
+
+  setStatusBarVisible(visible: boolean) {
+    if (visible) {
+      if (this.statusBar) return;
+      this.statusBar = this.addStatusBarItem();
+      this.statusBar.addClass("mod-clickable");
+      this.statusBar.addEventListener("click", (e) => this.showModeMenu(e));
+      this.updateStatusBar();
+    } else {
+      this.statusBar?.remove();
+      this.statusBar = null;
+    }
   }
 
   getCompletionOptions(): CompletionRequestOptions {
@@ -510,6 +522,19 @@ class AIRewriteSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.enabled = value;
             await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show status bar item")
+      .setDesc("Show the active mode indicator in the status bar. Select it to open the mode menu")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showStatusBar)
+          .onChange(async (value) => {
+            this.plugin.settings.showStatusBar = value;
+            await this.plugin.saveSettings();
+            this.plugin.setStatusBarVisible(value);
           })
       );
 
